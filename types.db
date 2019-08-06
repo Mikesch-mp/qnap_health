@@ -1,3 +1,0 @@
-# types.db for collectd * mato [17-oct-2017]
-rpm		value:GAUGE:0:U
-status		value:GAUGE:U:U
