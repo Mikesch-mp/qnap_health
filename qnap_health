@@ -767,24 +767,23 @@ elif [ "$strPart" == "systemuptime" ]; then
     EXIT=3
   fi
   if [ "$sysuptime" -le "$strCritical" ]; then
-    OUTPUT="CRITICAL: System Uptime $(date -d @$(( $(date +%s) - $sysuptime )))"
+    OUTPUT="CRITICAL: System up since $(date -d @$(( $(date +%s) - $sysuptime )))"
     EXIT=2
   elif [ "$sysuptime" -le "$strWarning" ]; then
-    OUTPUT="WARNING: System Uptime $(date -d @$(( $(date +%s) - $sysuptime )))"
+    OUTPUT="WARNING: System up since $(date -d @$(( $(date +%s) - $sysuptime )))"
     EXIT=1
   elif [ "$netuptime" -le "$strCritical" ]; then
-    OUTPUT="$OUTPUT CRITICAL: Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+    OUTPUT="$OUTPUT CRITICAL: Network up since $(date -d @$(( $(date +%s) - $netuptime )))"
     EXIT=2
   elif [ "$netuptime" -le "$strWarning" ]; then
-    OUTPUT="$OUTPUT WARNING: Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+    OUTPUT="$OUTPUT WARNING: Network up since $(date -d @$(( $(date +%s) - $netuptime )))"
     if [ ! $EXIT -eq 2 ];then
       EXIT=1
     fi
   else
-    OUTPUT="OK: System Uptime $(date -d @$(( $(date +%s) - $sysuptime ))) - Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+    OUTPUT="OK: System up since $(date -d @$(( $(date +%s) - $sysuptime ))) - Network up since $(date -d @$(( $(date +%s) - $netuptime )))"
   fi
 
-  #OUTPUT="System Uptime $(date -d @$(( $(date +%s) - $sysuptime ))) - Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
   PERFDATA="| system_uptime=${sysuptime}s;$strWarning;$strCritical;; network_uptime=${netuptime}s;$strWarning;$strCritical;;"
 
   echo "$OUTPUT $PERFDATA" | awk '{$1=$1};1'
