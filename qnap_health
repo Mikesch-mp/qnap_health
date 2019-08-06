@@ -434,15 +434,15 @@ elif [[ "$strPart" == hdtemp ]]; then
     fi
     if [ $TEMPHD -ge $strCritical ]; then
       if [ -n "$CriticalStr" ]; then
-        CriticalStr="${CriticalStr}, HDD${c}=${TEMPHD}°C"
+        CriticalStr="${CriticalStr}, HDD${c}: ${TEMPHD}°C"
       else
-        CriticalStr="CRITICAL: HDD${c}=${TEMPHD}°C"
+        CriticalStr="CRITICAL: HDD${c}: ${TEMPHD}°C"
       fi
     elif [ $TEMPHD -ge $strWarning -a $TEMPHD -lt $strCritical ]; then
       if [ -n "$WarningStr" ]; then
-        WarningStr="${WarningStr}, HDD${c}=${TEMPHD}°C"
+        WarningStr="${WarningStr}, HDD${c}: ${TEMPHD}°C"
       else
-        WarningStr="WARNING: HDD${c}=${TEMPHD}°C"
+        WarningStr="WARNING: HDD${c}: ${TEMPHD}°C"
       fi
     fi
     if [ -n "$PERFOUTPUT" ]; then
