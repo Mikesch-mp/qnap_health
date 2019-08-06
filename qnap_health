@@ -724,7 +724,7 @@ elif [ "$strPart" == "fans" ]; then
     if [ $FAN -gt 1 ]; then
       PERFOUTPUT="$PERFOUTPUT "
     fi
-    PERFOUTPUT="${PERFOUTPUT}Fan-$FAN=$FANSPEED;$strWarning;$strCritical"
+    PERFOUTPUT="${PERFOUTPUT}Fan-$FAN=$FANSPEED;$strWarning;$strCritical;;"
 
     if [ "$FANSPEED" == "" ]; then
       FANSTAT="CRITICAL: $FANSPEED RPM"
