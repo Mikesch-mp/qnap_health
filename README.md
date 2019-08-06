@@ -1,29 +1,12 @@
 # About
 
-Check NAS QNAP from Nagios or similar monitoring software.
+Check NAS QNAP from Icinga2 or similar monitoring software.
 
 # Usage
 
-Enable SNMP on QNAP NAS appliance and use this script with Nagios.
+Enable SNMP on QNAP NAS appliance and use this script with Icinga2.
 
-Add the following configuration into Nagios Command file:
-
-	define command{
-		command_name 	check_qnap
-		command_line 	$USER1$/check_qnap3.sh $ARG1$ $ARG2$ $ARG3$ $ARG4$ $ARG5$
-	}
-
-Parameters:
-
-$ARG1$ - NAS HostAddress
-
-$ARG2$ - SNMP Community Name with readonly rights
-
-$ARG3$ - Type of Check (part)
-
-$ARG4$ - Warning  (mandatory; for some checks use symbolic value like 1)
-
-$ARG5$ - Critical (mandatory; for some checks use symbolic value like 1)
+Copy the command_qnap_health.conf into the configuration path of Icinga2.
 
 # Contributing
 
@@ -32,10 +15,7 @@ Please feel free to fork and collaborate on this little but useful project.
 # Parts of script to improve
 
 - Power unit check - (let me know if on your device work)
-- HDSTATUS check smart and temperature foreach disk and performance output (rewrite this)
-- Improve Performance output for command
-- Check script input parameters
-- Disk usage to be rewrite
+- Rewrite some code for better readability
 
 # Test
 
@@ -46,5 +26,5 @@ This script was tested with:
 - QNAP Model TS-EC1280U, Firmware 4.2.2 (Thanks to AndresCidoncha)
 - QNAP Model TS-459 Pro+, Firmware 4.2.6, Max HD number 4, No. Volume 1
 - QNAP Model TS-1263U-RP, Firmware 4.3.3, Max HD number 12, No. Volume 1
-
-Nicola
+- QNAP Model TS-EC1680U, Firmware 4.3.6, Max HD number 16
+- QNAP Model TS-EC2480U, Firmware 4.3.6, Max HD number 24
