@@ -204,7 +204,7 @@ while true; do
   esac
 done
 
-if ([ "$strPart" != "sysinfo" -a "$strPart" != "hdstatus" ]) && ( [ -z "$strWarning" -o -z "$strCritical" ]);then
+if ([ "$strPart" != "sysinfo" -a "$strPart" != "hdstatus" -a "$strPart" != "powerstatus" ]) && ( [ -z "$strWarning" -o -z "$strCritical" ]);then
   echo "UKNOWN: $strPart check needs warning and critical threshold set."
   exit 3
 fi
