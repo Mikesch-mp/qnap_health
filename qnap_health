@@ -3,9 +3,11 @@
 ############################# Created and written by Matthias Luettermann ###############
 ############################# finetuning by primator@gmail.com
 ############################# finetuning by n.bandini@gmail.com
+############################# finetuning by vitamin.b@mailbox.org
 ############################# with code by Tom Lesniak and Hugo Geijteman
+############################# with code by Carsten Koebke
 #
-#	copyright (c) 2008 Shahid Iqbal
+# copyright (c) 2008 Shahid Iqbal
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation;
@@ -17,556 +19,800 @@
 #
 # contact the author directly for more information at: matthias@xcontrol.de
 ##########################################################################################
-#Version 1.23
-plgVer=1.23
+plgVer=1.00
 
 usage() {
-	echo
-	echo "Check_QNAP3 $plgVer"
-	echo
-	echo "Warning: Wrong command line arguments."
-	echo
-	echo "Usage: ${0##*/} [-V protocol] <hostname> <community> <part> <warning> <critical>"
-	echo
-	echo "Where: -V - SNMP protocol version to use (1, 2c, 3); default: 2c"
-	echo "       -H - no human-readable output; do not use unit suffixes"
-	echo
-	echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, freeram, powerstatus, fans, diskused, hdstatus, hd#status, hd#temp, volstatus (Raid Volume Status), vol#status"
-	echo
-	echo "hdstatus shows status & temp; volstatus checks all vols and vols space; powerstatus checks power supply"
-	echo "<#> is 1-8 for hd, 1-5 for vol"
-	echo
-	echo " Example for diskusage: ${0##*/} 127.0.0.1 public diskused 80 95"
-	echo
-	echo " Example for volstatus: ${0##*/} 127.0.0.1 public volstatus 15 10"
-	echo "                        critical and warning value are related to free disk space"
-	echo
-	echo " Example for fans: ${0##*/} 127.0.0.1 public fans 2000 1900"
-	echo "                   critical and warning are minimum speed in rpm for fans"
-	echo
-	exit 3
+  echo
+  echo "qnap_health $plgVer"
+  echo
+  echo "Warning: Wrong command line arguments."
+  echo
+  echo "Usage: ${0##*/} [-V protocol] -H <hostname> -C <community> -p <part> -w <warning> -c <critical>"
+  echo
+  echo "Where: -p|--part             - part to check"
+  echo "       -h                    - no human-readable output; do not use unit suffixes"
+  echo "       -w|--warning          - warning"
+  echo "       -c|--critical         - critical"
+  echo "       --help                - show this help"
+  echo
+  echo "SNMP specific"
+  echo "       -H|--hostname         - hostname or IP"
+  echo "       -V                    - SNMP protocol version to use (1, 2c, 3); default: 2c"
+  echo "       -P|--port             - SNMP port; default: 161"
+  echo
+  echo "SNMP Version 1|2c specific"
+  echo "       -C|--community        - SNMP community name; default: public"
+  echo
+  echo "SNMP Version 3 specific"
+  echo "       -l|--level            - security level (noAuthNoPriv|authNoPriv|authPriv)"
+  echo "       -u|--user             - security name"
+  echo "       -a|--authprotocol     - authentication protocol (MD5|SHA)"
+  echo "       -A|--authpassphrase   - authentication protocol pass phrase"
+  echo "       -x|--privprotocol     - privacy protocol (DES|AES)"
+  echo "       -X|--privpassphrase   - privacy protocol pass phrase"
+  echo
+  echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, freeram, powerstatus, fans, diskused, hdstatus, hdtemp, lunstatus (for iSCSI luns), volstatus (Raid Volume Status)"
+  echo
+  echo "volstatus & lunstatus checks all vols/luns and vols/lun space; powerstatus checks power supply"
+  echo "<#> is 1-8 for hd, 1-5 for vol"
+  echo
+  echo " Example for diskusage: ${0##*/} -H 127.0.0.1 -C public -p diskused -w 80 -c 95"
+  echo
+  echo " Example for volstatus: ${0##*/} -H 127.0.0.1 -C public -p volstatus -w 15 -c 10"
+  echo "                        critical and warning value are related to free disk space"
+  echo
+  echo " Example for fans: ${0##*/} -H 127.0.0.1 -C public -p fans -w 2000 -c 1900"
+  echo "                   critical and warning are minimum speed in rpm for fans"
+  echo
+  exit 3
 }
 
-protocol="2c"
-secstropt="-c"
+strProtocol="2c"
+strCommunity="public"
+strPort="161"
 
-while getopts 'HV:?' opt
-do
-	case "$opt" in
-		\?)
-			usage
-			;;
-		H)
-			inhuman=1
-			;;
-		V)
-			protocol="$OPTARG"
-			case "$protocol" in
-				3)
-					secstropt="-u"
-					;;
-				2c|1)
-					secstropt="-c"
-					;;
-				*)
-					echo "ERROR: wrong protocol version" >&2
-					exit 3
-					;;
-			esac
-			;;
-	esac
+PARSED_OPTIONS=$(getopt -n "$0" -o V:H:C:p:hw:c:l:u:a:A:x:X:P: --long "hostname:,community:,part:,warning:,critical:,level:,user:,authprotocol:,authpassphrase:,privprotocol:,privpassphrase:,port:,help" -- "$@")
+if [ $? -ne 0 ]; then
+  usage
+  exit 3
+fi
+
+if [ $# -eq 0 ]; then
+  usage
+  exit 3
+fi
+eval set -- "$PARSED_OPTIONS"
+
+while true; do
+  case "$1" in
+    --help)
+      usage
+      shift
+      ;;
+    -C|--community)
+      strCommunity="$2"
+      shift 2
+      ;;
+    -P|--port)
+      strPort="$2"
+      shift 2
+      ;;
+    -h)
+      inhuman=1
+      shift
+      ;;
+    -H|--hostname)
+      strHostname="$2"
+      shift 2
+      ;;
+    -p|--part)
+      strPart="$2"
+      shift 2
+      ;;
+    -V)
+      if [ -n "$2" ]; then
+        strProtocol="$2"
+        case "$strProtocol" in
+          1|2c|3)
+            ;;
+          *)
+            echo "ERROR: wrong protocol version" >&2
+            exit 3
+            ;;
+        esac
+      fi
+      shift 2
+      ;;
+    -w|--warning)
+      strWarning="$2"
+      shift 2
+      ;;
+    -c|--critical)
+      strCritical="$2"
+      shift 2
+      ;;
+    -l|--level)
+      if [ -n "$2" ]; then
+        strLevel="$2"
+        case "$strLevel" in
+          noAuthNoPriv|authNoPriv|authPriv)
+            ;;
+          *)
+            echo "ERROR: wrong security level" >&2
+            exit 3
+            ;;
+        esac
+      fi
+      shift 2
+      ;;
+    -u|--user)
+      if [ -n "$2" ]; then
+        strUser="$2"
+      fi
+      shift 2
+      ;;
+    -a|--authprotocol)
+      if [ -n "$2" ]; then
+        strAuthprotocol="${2,,}"
+        case "$strAuthprotocol" in
+          md5|sha)
+            ;;
+          *)
+            echo "ERROR: wrong authentication protocol" >&2
+            exit 3
+            ;;
+        esac
+      fi
+      shift 2
+      ;;
+    -A|--authpassphrase)
+      if [ -n "$2" ]; then
+        strAuthpassphrase="$2"
+      else
+        echo "ERROR: authentification passphrase is missing" >&2
+        exit 3
+      fi
+      shift 2
+      ;;
+    -x|--privprotocol)
+      if [ -n "$2" ]; then
+        strPrivprotocol="${2,,}"
+        case "$strPrivprotocol" in
+          des|aes)
+            ;;
+          *)
+            echo "ERROR: wrong privacy protocol" >&2
+            exit 3
+            ;;
+        esac
+      fi
+      shift 2
+      ;;
+    -X|--privpassphrase)
+      if [ -n "$2" ]; then
+        strPrivpassphrase="$2"
+      else
+        echo "ERROR: privacy passphrase is missing" >&2
+        exit 3
+      fi
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+  esac
 done
 
-shift $(($OPTIND-1))
+if ([ "$strPart" != "sysinfo" -a "$strPart" != "hdstatus" ]) && ( [ -z "$strWarning" -o -z "$strCritical" ]);then
+  echo "UKNOWN: $strPart check needs warning and critical threshold set."
+  exit 3
+fi
 
-[ $# -ne 5 ] && usage
+function _cmdparam() {
+  case "$strProtocol" in
+    1|2c)
+      cmd="-v $strProtocol -c $strCommunity"
+      ;;
+    3)
+      cmd="-v $strProtocol -u $strUser -l $strLevel -a $strAuthprotocol -A $strAuthpassphrase -x $strPrivprotocol -X $strPrivpassphrase"
+      ;;
+  esac
 
-strHostname="$1"
-strCommunity="$2"
-strpart="$3"
-strWarning="$4"
-strCritical="$5"
+  if [ -n "$strPort" ]; then
+    cmd="$cmd $strHostname:$strPort"
+  else
+    cmd="$cmd $strHostname"
+  fi
+
+  echo "$cmd"
+}
 
 function _snmpget() {
-	snmpget -v $protocol $secstropt "$strCommunity" "$strHostname" "$@"
+  snmpget $(_cmdparam) "$@"
+}
+
+function _snmpwalk() {
+  snmpwalk $(_cmdparam) "$@"
 }
 
 function _snmpgetval() {
-	snmpget -v $protocol $secstropt "$strCommunity" -Oqv "$strHostname" "$@"
+  snmpget $(_cmdparam) -Oqv "$@"
 }
 
 function _snmpstatus() {
-	snmpstatus -v $protocol $secstropt "$strCommunity" "$strHostname" "$@"
+  snmpstatus $(_cmdparam) "$@"
 }
 
 function _get_exp() {
-	case "$1" in
-		PB)	echo "50" ;;
-		TB)	echo "40" ;;
-		GB)	echo "30" ;;
-		MB)	echo "20" ;;
-		KB)	echo "10" ;;
-		'')	echo "0" ;;
-		*)	echo "ERROR: unknown unit '$1'" ;;
-	esac
+  case "$1" in
+    PB) echo "50" ;;
+    TB) echo "40" ;;
+    GB) echo "30" ;;
+    MB) echo "20" ;;
+    KB) echo "10" ;;
+    '') echo "0" ;;
+    *)  echo "ERROR: unknown unit '$1'" ;;
+  esac
 }
 
 # Check if QNAP is online
 TEST="$(_snmpstatus -t 5 -r 0 2>&1)"
 if [ "$TEST" == "Timeout: No Response from $strHostname" ]; then
-	echo "CRITICAL: SNMP to $strHostname is not available or wrong community string";
-	exit 2;
+  echo "UNKOWN: SNMP to $strHostname is not available or wrong community string";
+  exit 3;
 fi
 
 # STATUS ---------------------------------------------------------------------------------------------------------------------------------------
-if [ "$strpart" == "status" ]; then
-	echo "$TEST";
+if [ "$strPart" == "status" ]; then
+  echo "$TEST";
 
 # DISKUSED ---------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "diskused" ]; then
-	diskStr="$(_snmpget 1.3.6.1.4.1.24681.1.2.17.1.4.1)"
-	freeStr="$(_snmpget 1.3.6.1.4.1.24681.1.2.17.1.5.1)"
+elif [ "$strPart" == "diskused" ]; then
+  diskStr="$(_snmpget 1.3.6.1.4.1.24681.1.2.17.1.4.1)"
+  freeStr="$(_snmpget 1.3.6.1.4.1.24681.1.2.17.1.5.1)"
 
-	diskSize="$(echo "$diskStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
-	freeSize="$(echo "$freeStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
-	diskUnit="$(echo "$diskStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
-	freeUnit="$(echo "$freeStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
+  diskSize="$(echo "$diskStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
+  freeSize="$(echo "$freeStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
+  diskUnit="$(echo "$diskStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
+  freeUnit="$(echo "$freeStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
 
-	diskExp="$(_get_exp "$diskUnit")"
-	freeExp="$(_get_exp "$freeUnit")"
+  diskExp="$(_get_exp "$diskUnit")"
+  freeExp="$(_get_exp "$freeUnit")"
 
-	disk="$(echo "scale=0; $diskSize*(2^$diskExp)" | bc -l)"
-	free="$(echo "scale=0; $freeSize*(2^$freeExp)" | bc -l)"
+  disk="$(echo "scale=0; $diskSize*(2^$diskExp)" | bc -l)"
+  free="$(echo "scale=0; $freeSize*(2^$freeExp)" | bc -l)"
 
-	used="$(echo "scale=0; $disk-$free" | bc -l)"
-	perc="$(echo "scale=0; $used*100/$disk" | bc -l)"
+  used="$(echo "scale=0; $disk-$free" | bc -l)"
+  perc="$(echo "scale=0; $used*100/$disk" | bc -l)"
 
-	diskH="$(echo "scale=2; $disk/(2^$diskExp)" | bc -l)"
-	freeH="$(echo "scale=2; $free/(2^$freeExp)" | bc -l)"
-	usedH="$(echo "scale=2; $used/(2^$diskExp)" | bc -l)"
+  diskH="$(echo "scale=2; $disk/(2^$diskExp)" | bc -l)"
+  freeH="$(echo "scale=2; $free/(2^$freeExp)" | bc -l)"
+  usedH="$(echo "scale=2; $used/(2^$diskExp)" | bc -l)"
 
-	if [ "${inhuman:-0}" -eq 1 ]; then
-		diskF="$disk"
-		freeF="$free"
-		usedF="$used"
-	else
-		diskF="$diskH$diskUnit"
-		freeF="$freeH$freeUnit"
-		usedF="$usedH$diskUnit"
-	fi
+  if [ "${inhuman:-0}" -eq 1 ]; then
+    diskF="$disk"
+    freeF="$free"
+    usedF="$used"
+  else
+    diskF="$diskH$diskUnit"
+    freeF="$freeH$freeUnit"
+    usedF="$usedH$diskUnit"
+  fi
 
-	#wdisk=$(echo "scale=0; $strWarning*$disk/100" | bc -l)
-	#cdisk=$(echo "scale=0; $strCritical*$disk/100" | bc -l)
+  #wdisk=$(echo "scale=0; $strWarning*$disk/100" | bc -l)
+  #cdisk=$(echo "scale=0; $strCritical*$disk/100" | bc -l)
 
-	OUTPUT="Total:$diskF - Used:$usedF - Free:$freeF - Used Space: $perc%|Used=$perc;$strWarning;$strCritical;0;100"
+  OUTPUT="Total:$diskF - Used:$usedF - Free:$freeF - Used Space: $perc%|Used=$perc;$strWarning;$strCritical;0;100"
 
-	if [ $perc -ge $strCritical ]; then
-		echo "CRITICAL: $OUTPUT"
-		exit 2
-	elif [ $perc -ge $strWarning ]; then
-		echo "WARNING: $OUTPUT"
-		exit 1
-	else
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  if [ $perc -ge $strCritical ]; then
+    echo "CRITICAL: $OUTPUT"
+    exit 2
+  elif [ $perc -ge $strWarning ]; then
+    echo "WARNING: $OUTPUT"
+    exit 1
+  else
+    echo "OK: $OUTPUT"
+    exit 0
+  fi
 
 # CPU ----------------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "cpu" ]; then
-	CPU="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.1.0 | sed -E 's/"([0-9.]+) ?%"/\1/')"
+elif [ "$strPart" == "cpu" ]; then
+  CPU="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.1.0 | sed -E 's/"([0-9.]+) ?%"/\1/')"
 
-	OUTPUT="CPU Load=$CPU%|CPU load=$CPU%;$strWarning;$strCritical;0;100"
+  OUTPUT="CPU Load=$CPU%|CPU load=$CPU%;$strWarning;$strCritical;0;100"
 
-	if (( $(echo "$CPU > $strCritical" | bc -l) )); then
-		echo "CRITICAL: $OUTPUT"
-		exit 2
-	elif ((  $(echo "$CPU > $strWarning" | bc -l) )); then
-		echo "WARNING: $OUTPUT"
-		exit 1
-	else
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  if (( $(echo "$CPU > $strCritical" | bc -l) )); then
+    echo "CRITICAL: $OUTPUT"
+    exit 2
+  elif ((  $(echo "$CPU > $strWarning" | bc -l) )); then
+    echo "WARNING: $OUTPUT"
+    exit 1
+  else
+    echo "OK: $OUTPUT"
+    exit 0
+  fi
 
 # CPUTEMP ----------------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "cputemp" ]; then
-	TEMP0="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.5.0 | sed -E 's/"([0-9.]+) ?C.*/\1/')"
-	OUTPUT="CPU Temperature=${TEMP0}C|NAS CPUtemperature=${TEMP0}C;$strWarning;$strCritical;0;90"
+elif [ "$strPart" == "cputemp" ]; then
+  TEMP0="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.5.0 | sed -E 's/"([0-9.]+) ?C.*/\1/')"
+  OUTPUT="CPU Temperature=${TEMP0}C|NAS CPUtemperature=${TEMP0}C;$strWarning;$strCritical;0;90"
 
-	if [ "$TEMP0" -ge 89 ]; then
-		echo "CPU temperature too high!: $OUTPUT"
-		exit 3
-	else
-		if [ "$TEMP0" -ge "$strCritical" ]; then
-			echo "CRITICAL: $OUTPUT"
-			exit 2
-		fi
-		if [ "$TEMP0" -ge "$strWarning" ]; then
-			echo "WARNING: $OUTPUT"
-			exit 1
-		fi
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  if [ "$TEMP0" -ge 89 ]; then
+    echo "CPU temperature too high!: $OUTPUT"
+    exit 3
+  else
+    if [ "$TEMP0" -ge "$strCritical" ]; then
+      echo "CRITICAL: $OUTPUT"
+      exit 2
+    fi
+    if [ "$TEMP0" -ge "$strWarning" ]; then
+      echo "WARNING: $OUTPUT"
+      exit 1
+    fi
+    echo "OK: $OUTPUT"
+    exit 0
+  fi
 
 # Free RAM---------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "freeram" ]; then
-	totalMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.2.0)"
-	freeMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.3.0)"
+elif [ "$strPart" == "freeram" ]; then
+  totalMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.2.0)"
+  freeMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.3.0)"
 
-	totalMemSize="$(echo "$totalMemStr" | sed -E 's/"([0-9.]+) ?.?B"/\1/')"
-	freeMemSize="$(echo "$freeMemStr" | sed -E 's/"([0-9.]+) ?.?B"/\1/')"
-	totalMemUnit="$(echo "$totalMemStr" | sed -E 's/"[0-9.]+ ?(.?B)"/\1/')"
-	freeMemUnit="$(echo "$freeMemStr" | sed -E 's/"[0-9.]+ ?(.?B)"/\1/')"
+  totalMemSize="$(echo "$totalMemStr" | sed -E 's/"([0-9.]+) ?.?B"/\1/')"
+  freeMemSize="$(echo "$freeMemStr" | sed -E 's/"([0-9.]+) ?.?B"/\1/')"
+  totalMemUnit="$(echo "$totalMemStr" | sed -E 's/"[0-9.]+ ?(.?B)"/\1/')"
+  freeMemUnit="$(echo "$freeMemStr" | sed -E 's/"[0-9.]+ ?(.?B)"/\1/')"
 
-	totalMemExp="$(_get_exp "$totalMemUnit")"
-	freeMemExp="$(_get_exp "$freeMemUnit")"
+  totalMemExp="$(_get_exp "$totalMemUnit")"
+  freeMemExp="$(_get_exp "$freeMemUnit")"
 
-	totalMem="$(echo "scale=0; $totalMemSize*(2^$totalMemExp)" | bc -l)"
-	freeMem="$(echo "scale=0; $freeMemSize*(2^$freeMemExp)" | bc -l)"
+  totalMem="$(echo "scale=0; $totalMemSize*(2^$totalMemExp)" | bc -l)"
+  freeMem="$(echo "scale=0; $freeMemSize*(2^$freeMemExp)" | bc -l)"
 
-	usedMem="$(echo "scale=0; $totalMem-$freeMem" | bc -l)"
-	percMem="$(echo "scale=0; $usedMem*100/$totalMem" | bc -l)"
+  usedMem="$(echo "scale=0; $totalMem-$freeMem" | bc -l)"
+  percMem="$(echo "scale=0; $usedMem*100/$totalMem" | bc -l)"
 
-	totalMemH="$(echo "scale=1; $totalMem/(2^$totalMemExp)" | bc -l)"
-	freeMemH="$(echo "scale=1; $freeMem/(2^$freeMemExp)" | bc -l)"
-	usedMemH="$(echo "scale=1; $usedMem/(2^$freeMemExp)" | bc -l)"
+  totalMemH="$(echo "scale=1; $totalMem/(2^$totalMemExp)" | bc -l)"
+  freeMemH="$(echo "scale=1; $freeMem/(2^$freeMemExp)" | bc -l)"
+  usedMemH="$(echo "scale=1; $usedMem/(2^$freeMemExp)" | bc -l)"
 
-	if [ "${inhuman:-0}" -eq 1 ]; then
-		totalMemF="$totalMem"
-		freeMemF="$freeMem"
-		usedMemF="$usedMem"
-	else
-		totalMemF="$totalMemH$totalMemUnit"
-		freeMemF="$freeMemH$freeMemUnit"
-		usedMemF="$usedMemH$freeMemUnit"
-	fi
+  if [ "${inhuman:-0}" -eq 1 ]; then
+    totalMemF="$totalMem"
+    freeMemF="$freeMem"
+    usedMemF="$usedMem"
+  else
+    totalMemF="$totalMemH$totalMemUnit"
+    freeMemF="$freeMemH$freeMemUnit"
+    usedMemF="$usedMemH$freeMemUnit"
+  fi
 
-	OUTPUT="Total:$totalMemF - Used:$usedMemF - Free:$freeMemF = $percMem%|Memory usage=$percMem%;$strWarning;$strCritical;0;100"
+  OUTPUT="Total:$totalMemF - Used:$usedMemF - Free:$freeMemF = $percMem%|Memory usage=$percMem%;$strWarning;$strCritical;0;100"
 
-	if [ $percMem -ge $strCritical ]; then
-		echo "CRITICAL: $OUTPUT"
-		exit 2
-	elif [ $percMem -ge $strWarning ]; then
-		echo "WARNING: $OUTPUT"
-		exit 1
-	else
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  if [ $percMem -ge $strCritical ]; then
+    echo "CRITICAL: $OUTPUT"
+    exit 2
+  elif [ $percMem -ge $strWarning ]; then
+    echo "WARNING: $OUTPUT"
+    exit 1
+  else
+    echo "OK: $OUTPUT"
+    exit 0
+  fi
 
 # System Temperature---------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "temp" ]; then
-	TEMP0="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.6.0 | sed -E 's/"([0-9.]+) ?C.*/\1/')"
-	OUTPUT="Temperature=${TEMP0}C|NAS temperature=${TEMP0}C;$strWarning;$strCritical;0;80"
+elif [ "$strPart" == "temp" ]; then
+  TEMP0="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.6.0 | sed -E 's/"([0-9.]+) ?C.*/\1/')"
+  OUTPUT="Temperature=${TEMP0}C|NAS temperature=${TEMP0}C;$strWarning;$strCritical;0;100"
 
-	if [ "$TEMP0" -ge 89 ]; then
-		echo "System temperature too high!: $OUTPUT"
-		exit 3
-	else
-		if [ "$TEMP0" -ge "$strCritical" ]; then
-			echo "CRITICAL: $OUTPUT"
-			exit 2
-		fi
-		if [ "$TEMP0" -ge "$strWarning" ]; then
-			echo "WARNING: $OUTPUT"
-			exit 1
-		fi
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  if [ "$TEMP0" -ge 89 ]; then
+    echo "CRITICAL: System temperature too high!: $OUTPUT"
+    exit 2
+  else
+    if [ "$TEMP0" -ge "$strCritical" ]; then
+      echo "CRITICAL: $OUTPUT"
+      exit 2
+    fi
+    if [ "$TEMP0" -ge "$strWarning" ]; then
+      echo "WARNING: $OUTPUT"
+      exit 1
+    fi
+    echo "OK: $OUTPUT"
+    exit 0
+  fi
 
 # HD# Temperature---------------------------------------------------------------------------------------------------------------------------------------
-elif [[ "$strpart" == hd?temp ]]; then
-	hdnum="$(echo "$strpart" | sed -E 's/hd([0-9]+)temp/\1/')"
-	TEMPHD="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.3.$hdnum" | sed -E 's/"([0-9.]+) ?C.*/\1/')"
-	OUTPUT="Temperature=${TEMPHD}C|HDD$hdnum temperature=${TEMPHD}C;$strWarning;$strCritical;0;60"
+elif [[ "$strPart" == hdtemp ]]; then
+  PERFOUTPUT=""
+  UnknownStr=""
+  CriticalStr=""
+  WarningStr=""
+  EXIT=0
 
-	if [ "$(echo "$TEMPHD" | sed -E 's/[0-9.]+//g')" != "" ]; then
-		echo "ERROR: $TEMPHD"
-		exit 4
-	fi
-	if [ "$TEMPHD" -ge "59" ]; then
-		echo "HDD$hdnum temperature too high!: $OUTPUT"
-		exit 3
-	else
-		if [ "$TEMPHD" -ge "$strCritical" ]; then
-			echo "CRITICAL: $OUTPUT"
-			exit 2
-		fi
-		if [ "$TEMPHD" -ge "$strWarning" ]; then
-			echo "WARNING: $OUTPUT"
-			exit 1
-		fi
-		echo "OK: $OUTPUT"
-		exit 0
-	fi
+  hdnum="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.10.0)"
+  for (( c=1; c<=$hdnum; c++ ))
+  do
+    TEMPHD="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.3.$c" | sed -E 's/"([0-9.]+) ?C.*/\1/')"
 
-# Volume # Status----------------------------------------------------------------------------------------------------------------------------------------
-elif [[ "$strpart" == vol?status ]]; then
-	volnum="$(echo "$strpart" | sed -E 's/vol([0-9]+)status/\1/')"
-	Vol_Status="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.17.1.6.$volnum" | sed 's/^"\(.*\).$/\1/')"
+    if [ "$(echo "$TEMPHD" | sed -E 's/[0-9.]+//g')" != "" ]; then
+      if [ -n "$UnknownStr"]; then
+        UnknownStr="${UnknownStr},HDD${c}"
+      else
+        UnknownStr="UNKNOWN: HD${c}"
+      fi
+    fi
+    if [ $TEMPHD -ge $strCritical ]; then
+      if [ -n "$CriticalStr" ]; then
+        CriticalStr="${CriticalStr}, HDD${c}=${TEMPHD}°C"
+      else
+        CriticalStr="CRITICAL: HDD${c}=${TEMPHD}°C"
+      fi
+    elif [ $TEMPHD -ge $strWarning -a $TEMPHD -lt $strCritical ]; then
+      if [ -n "$WarningStr" ]; then
+        WarningStr="${WarningStr}, HDD${c}=${TEMPHD}°C"
+      else
+        WarningStr="WARNING: HDD${c}=${TEMPHD}°C"
+      fi
+    fi
+    if [ -n "$PERFOUTPUT" ]; then
+      PERFOUTPUT="${PERFOUTPUT} HDD${c}_temperature=${TEMPHD};$strWarning;$strCritical;;"
+    else
+      PERFOUTPUT="HDD${c}_temperature=${TEMPHD};$strWarning;$strCritical;;"
+    fi
+  done
 
-	if [[ "$Vol_Status" == 'No Such Instance'* ]]; then
-		echo "ERROR: $Vol_Status"
-		exit 4
-	elif [ "$Vol_Status" == "Ready" ]; then
-		echo "OK: $Vol_Status"
-		exit 0
-	elif [ "$Vol_Status" == "Rebuilding..." ]; then
-		echo "WARNING: $Vol_Status"
-		exit 1
-	else
-		echo "CRITICAL: $Vol_Status"
-		exit 2
-	fi
-
-# HD# Status----------------------------------------------------------------------------------------------------------------------------------------
-elif [[ "$strpart" == hd?status ]]; then
-	hdnum="$(echo "$strpart" | sed -E 's/hd([0-9]+)status/\1/')"
-	HDstat="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.7.$hdnum" | sed 's/^"\(.*\).$/\1/')"
-
-	if [[ "$HDstat" == 'No Such Instance'* ]]; then
-		echo "ERROR: $HDstat"
-		exit 4
-	elif [ "$HDstat" == "GOOD" ]; then
-		echo "OK: GOOD"
-		exit 0
-	else
-		echo "CRITICAL: ERROR"
-		exit 2
-	fi
+  if [ -z "$CriticalStr" -a -z "$WarningStr" -a -z "$UnknownStr" ]; then
+    OUTPUT="OK: All HDD are fine."
+  else
+    if [ -n "$CriticalStr" ]; then
+      EXIT=2
+      OUTPUT="$CriticalStr"
+    fi
+    if [ -n "$WarningStr" ]; then
+      if [ ! $EXIT -eq 2 ]; then
+        EXIT=1
+      fi
+      OUTPUT="$OUTPUT $WarningStr"
+    fi
+    if [ -n "$UnknownStr" ];then
+      if [ ! $EXIT -eq 1 -o ! $EXIT -eq 2 ];then
+        EXIT=3
+      fi
+      OUTPUT="$OUTPUT $UnknownStr"
+    fi
+  fi
+  OUTPUT=$(echo "$OUTPUT" | awk '{$1=$1};1')
+  echo "$OUTPUT | $PERFOUTPUT"
+  exit $EXIT
 
 # HD Status----------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "hdstatus" ]; then
-	hdnum="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.10.0)"
-	hdok=0
-	hdnop=0
-	output_crit=""
+elif [ "$strPart" == "hdstatus" ]; then
+  hdnum="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.10.0)"
+  hdok=0
+  hdnok=0
+  hdnop=0
+  output_crit=""
 
-	for (( c=1; c<=$hdnum; c++ ))
-	do
-		HD="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.7.$c" | sed 's/^"\(.*\).$/\1/')"
+  for (( c=1; c<=$hdnum; c++ ))
+  do
+    HD="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.7.$c" | sed 's/^"\(.*\).$/\1/')"
 
-		if [ "$HD" == "GOOD" ]; then
-			((hdok+=1))
-		elif [ "$HD" == "--" ]; then
-			((hdnop+=1))
-		else
-			output_crit="${output_crit} Disk ${c}"
-		fi
-	done
+    if [ "$HD" == "GOOD" ]; then
+      ((hdok+=1))
+    elif [ "$HD" == "--" ]; then
+      ((hdnop+=1))
+    else
+      output_crit="${output_crit} Disk ${c}"
+      ((hdnok+=1))
+    fi
+  done
 
-	if [ -n "$output_crit" ]
-	then
-		echo "CRITICAL: ${output_crit}"
-		exit 2
-	else
-		echo "OK: Online Disk $hdok, Free Slot $hdnop"
-		exit 0
-	fi
+  PERFDATA="| hdok=$hdok;;;; hdnok=$hdnok;;;; unused=$hdnop;;;;"
 
+  if [ -n "$output_crit" ]
+  then
+    echo "CRITICAL: $(${output_crit} | awk '{$1=$1};1' )$PERFDATA"
+    exit 2
+  else
+    echo "OK: Online Disk $hdok, Free Slot ${hdnop}$PERFDATA"
+    exit 0
+  fi
+
+# LUN Status----------------------------------------------------------------------------------------------------------------------------------------
+elif [ "$strPart" == "lunstatus" ]; then
+  ALLOUTPUT=""
+  PERFOUTPUT=""
+  WARNING=0
+  CRITICAL=0
+  lun=1
+  lunCOUNT="$(_snmpwalk .1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.2 | wc -l)"
+
+  #if [ "$strWarning" -lt "$strCritical" ]; then
+  #  echo "Warning threshold ($strWarning) is less than critical threshold ($strCritical) ! -- Are you sure ?"
+  #fi
+  while [ "$lun" -le "$lunCOUNT" ]; do
+    lun_Status="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.5.$lun" | sed 's/^"\(.*\).$/\1/')"
+    lun_name="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.6.$lun" | sed 's/^"\(.*\).$/\1/')"
+    if [ "$lun_Status" == "Enabled" ]; then
+      lunSTAT="OK($lun_Status)"
+    else
+      lunSTAT="CRITICAL($lun_Status)"
+      CRITICAL=1
+    fi
+
+    lunCpctStr="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.3.$lun")"
+    lunUsedPct="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.4.$lun")"
+
+    lunCpct="$(echo "scale=0; $lunCpctStr*(2^0)" | bc -l)"
+    lunUsedCpct="$(echo "scale=0; $lunCpct/100*$lunUsedPct" | bc -l)"
+    lunUsedWarn="$(echo "scale=0; $lunCpct/100*$strWarning" | bc -l)"
+    lunusedCrit="$(echo "scale=0; $lunCpct/100*$strCritical" | bc -l)"
+
+    if [ "$lunUsedPct" -ge "$strCritical" ]; then
+      lunUsedPctStr="CRITICAL($lunUsedPct)"
+      CRITICAL=1
+    elif [ "$lunUsedPct" -ge "$strWarning" -a "$lunUsedPct" -lt "$strCritical" ]; then
+      lunUsedPctStr="WARNING($lunUsedPct)"
+      WARNING=1
+    fi
+
+    if [ -n "$ALLOUTPUT" ] ; then
+      ALLOUTPUT="${ALLOUTPUT} :: "
+    fi
+    if [ "$lunUsedPctStr" != "" ]; then
+      ALLOUTPUT="${ALLOUTPUT}$lun_name: $lunSTAT, used: ${lunUsedPctStr}%"
+    fi
+
+    #Performance Data
+    if [ $lun -gt 1 ]; then
+      PERFOUTPUT="$PERFOUTPUT "
+    fi
+    PERFOUTPUT="${PERFOUTPUT}usedpct_$lun_name=${lunUsedPct}%;$strWarning;$strCritical;0;100 used_$lun_name=${lunUsedCpct}b;$lunUsedWarn;$lunusedCrit;0;$lunCpct"
+
+    lun="`expr $lun + 1`"
+    unset lunUsedPctStr
+  done
+
+  if [ -z $ALLOUTPUT ]; then
+    ALLOUTPUT="OK: All luns are fine."
+  fi
+  echo "$ALLOUTPUT| $PERFOUTPUT"
+
+  if [ $CRITICAL -eq 1 ]; then
+    exit 2
+  elif [ $WARNING -eq 1 ]; then
+    exit 1
+  else
+    exit 0
+  fi
 # Volume Status----------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "volstatus" ]; then
-	ALLOUTPUT=""
-	PERFOUTPUT=""
-	WARNING=0
-	CRITICAL=0
-	VOL=1
-	VOLCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.16.0)"
+elif [ "$strPart" == "volstatus" ]; then
+  ALLOUTPUT=""
+  PERFOUTPUT=""
+  WARNING=0
+  CRITICAL=0
+  VOL=1
+  VOLCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.16.0)"
 
-	if [ "$strWarning" -lt "$strCritical" ]; then
-		echo "Warning threshold ($strWarning) is less than critical threshold ($strCritical) ! -- Are you sure ?"
-	fi
+  if [ "$strWarning" -lt "$strCritical" ]; then
+    echo "Warning threshold ($strWarning) is less than critical threshold ($strCritical) ! -- Are you sure ?"
+  fi
 
-	while [ "$VOL" -le "$VOLCOUNT" ]; do
-		Vol_Status="$(_snmpgetval ".1.3.6.1.4.1.24681.1.2.17.1.6.$VOL" | sed 's/^"\(.*\).$/\1/')"
+  while [ "$VOL" -le "$VOLCOUNT" ]; do
+    Vol_Status="$(_snmpgetval ".1.3.6.1.4.1.24681.1.2.17.1.6.$VOL" | sed 's/^"\(.*\).$/\1/')"
 
-		if [ "$Vol_Status" == "Ready" ]; then
-			VOLSTAT="OK: $Vol_Status"
-		elif [ "$Vol_Status" == "Rebuilding..." ]; then
-			VOLSTAT="WARNING: $Vol_Status"
-			WARNING=1
-		else
-			VOLSTAT="CRITICAL: $Vol_Status"
-			CRITICAL=1
-		fi
+    if [ "$Vol_Status" == "Ready" ]; then
+      VOLSTAT="OK: $Vol_Status"
+    elif [ "$Vol_Status" == "Rebuilding..." ]; then
+      VOLSTAT="WARNING: $Vol_Status"
+      WARNING=1
+    else
+      VOLSTAT="CRITICAL: $Vol_Status"
+      CRITICAL=1
+    fi
 
-		volCpctStr="$(_snmpget ".1.3.6.1.4.1.24681.1.2.17.1.4.$VOL")"
-		volFreeStr="$(_snmpget ".1.3.6.1.4.1.24681.1.2.17.1.5.$VOL")"
+    volCpctStr="$(_snmpget ".1.3.6.1.4.1.24681.1.2.17.1.4.$VOL")"
+    volFreeStr="$(_snmpget ".1.3.6.1.4.1.24681.1.2.17.1.5.$VOL")"
 
-		volCpctSize="$(echo "$volCpctStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
-		volFreeSize="$(echo "$volFreeStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
-		volCpctUnit="$(echo "$volCpctStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
-		volFreeUnit="$(echo "$volFreeStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
+    volCpctSize="$(echo "$volCpctStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
+    volFreeSize="$(echo "$volFreeStr" | awk '{print $4}' | sed 's/.\(.*\)/\1/')"
+    volCpctUnit="$(echo "$volCpctStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
+    volFreeUnit="$(echo "$volFreeStr" | awk '{print $5}' | sed 's/.*\(.B\).*/\1/')"
 
-		volCpctExp="$(_get_exp "$volCpctUnit")"
-		volFreeExp="$(_get_exp "$volFreeUnit")"
+    volCpctExp="$(_get_exp "$volCpctUnit")"
+    volFreeExp="$(_get_exp "$volFreeUnit")"
 
-		volCpct="$(echo "scale=0; $volCpctSize*(2^$volCpctExp)" | bc -l)"
-		volFree="$(echo "scale=0; $volFreeSize*(2^$volFreeExp)" | bc -l)"
-		volUsed="$(echo "scale=0; $volCpct-$volFree" | bc -l)"
+    volCpct="$(echo "scale=0; $volCpctSize*(2^$volCpctExp)" | bc -l)"
+    volFree="$(echo "scale=0; $volFreeSize*(2^$volFreeExp)" | bc -l)"
+    volUsed="$(echo "scale=0; $volCpct-$volFree" | bc -l)"
 
-		volFreePct="$(echo "scale=0; $volFree*100/$volCpct" | bc -l)"
-		volUsedPct="$(echo "scale=0; $volUsed*100/$volCpct" | bc -l)"
+    volFreePct="$(echo "scale=0; $volFree*100/$volCpct" | bc -l)"
+    volUsedPct="$(echo "scale=0; $volUsed*100/$volCpct" | bc -l)"
 
-		volCpctH="$(echo "scale=2; $volCpct/(2^$volCpctExp)" | bc -l)"
-		volFreeH="$(echo "scale=2; $volFree/(2^$volFreeExp)" | bc -l)"
-		volUsedH="$(echo "scale=2; $volUsed/(2^$volFreeExp)" | bc -l)"
+    volCpctH="$(echo "scale=2; $volCpct/(2^$volCpctExp)" | bc -l)"
+    volFreeH="$(echo "scale=2; $volFree/(2^$volFreeExp)" | bc -l)"
+    volUsedH="$(echo "scale=2; $volUsed/(2^$volFreeExp)" | bc -l)"
 
-		if [ "${inhuman:-0}" -eq 1 ]; then
-			volCpctF="$volCpct"
-			volFreeF="$volFree"
-			volUsedF="$volUsed"
-		else
-			volCpctF="$volCpctH $volCpctUnit"
-			volFreeF="$volFreeH $volFreeUnit"
-			volUsedF="$volUsedH $volFreeUnit"
-		fi
+    if [ "${inhuman:-0}" -eq 1 ]; then
+      volCpctF="$volCpct"
+      volFreeF="$volFree"
+      volUsedF="$volUsed"
+    else
+      volCpctF="$volCpctH $volCpctUnit"
+      volFreeF="$volFreeH $volFreeUnit"
+      volUsedF="$volUsedH $volFreeUnit"
+    fi
 
-		if [ "$volFreePct" -le "$strCritical" ]; then
-			volFreePct="CRITICAL: $volFreePct"
-			CRITICAL=1
-		elif [ "$volFreePct" -le "$strWarning" ]; then
-			volFreePct="WARNING: $volFreePct"
-			WARNING=1
-		fi
+    if [ "$volFreePct" -le "$strCritical" ]; then
+      volFreePct="CRITICAL: $volFreePct"
+      CRITICAL=1
+    elif [ "$volFreePct" -le "$strWarning" ]; then
+      volFreePct="WARNING: $volFreePct"
+      WARNING=1
+    fi
 
-		ALLOUTPUT="${ALLOUTPUT}Volume #$VOL: $VOLSTAT, Total Size (bytes): $volCpctF, Free: $volFreeF (${volFreePct}%)"
-		if [ "$VOL" -lt "$VOLCOUNT" ]; then
-			ALLOUTPUT="${ALLOUTPUT}, "
-		fi
+    ALLOUTPUT="${ALLOUTPUT}Volume #$VOL: $VOLSTAT, Total Size (bytes): $volCpctF, Free: $volFreeF (${volFreePct}%)"
+    if [ "$VOL" -lt "$VOLCOUNT" ]; then
+      ALLOUTPUT="${ALLOUTPUT}, "
+    fi
 
-		#Performance Data
-		if [ $VOL -gt 1 ]; then
-			PERFOUTPUT="$PERFOUTPUT "
-		fi
-		PERFOUTPUT="${PERFOUTPUT}FreeSize_Volume-$VOL=${volFreePct}%;$strWarning;$strCritical;0;100"
+    #Performance Data
+    if [ $VOL -gt 1 ]; then
+      PERFOUTPUT="$PERFOUTPUT "
+    fi
+    PERFOUTPUT="${PERFOUTPUT}FreeSize_Volume-$VOL=${volFreePct}%;$strWarning;$strCritical;0;100"
 
-		VOL="`expr $VOL + 1`"
-	done
+    VOL="`expr $VOL + 1`"
+  done
 
-	echo "$ALLOUTPUT|$PERFOUTPUT"
+  echo "$ALLOUTPUT|$PERFOUTPUT"
 
-	if [ $CRITICAL -eq 1 ]; then
-		exit 2
-	elif [ $WARNING -eq 1 ]; then
-		exit 1
-	else
-		exit 0
-	fi
+  if [ $CRITICAL -eq 1 ]; then
+    exit 2
+  elif [ $WARNING -eq 1 ]; then
+    exit 1
+  else
+    exit 0
+  fi
 
 # Power Supply Status  ----------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "powerstatus" ]; then
-	ALLOUTPUT=""
-	WARNING=0
-	CRITICAL=0
-	PS=1
-	COUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.4.1.1.1.1.3.1.0)"
+elif [ "$strPart" == "powerstatus" ]; then
+  ALLOUTPUT=""
+  WARNING=0
+  CRITICAL=0
+  PS=1
+  COUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.4.1.1.1.1.3.1.0)"
 
-	if [[ "$COUNT" == 'No Such Object'* ]]; then
-		echo "ERROR: $COUNT"
-		exit 4
-	fi
+  if [[ "$COUNT" == 'No Such Object'* ]]; then
+    echo "UNKOWN: Could not get information about powersupplies"
+    exit 4
+  fi
 
-	while [ "$PS" -le "$COUNT" ]; do
-		STATUS="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.1.1.3.2.1.4.$PS")"
-		if [ "$STATUS" -eq 0 ]; then
-			PSSTATUS="OK: GOOD"
-		else
-			PSSTATUS="CRITICAL: ERROR"
-			CRITICAL=1
-		fi
-		ALLOUTPUT="${ALLOUTPUT}Power Supply #$PS - $PSSTATUS"
-		if [ "$PS" -lt "$COUNT" ]; then
-			ALLOUTPUT="$ALLOUTPUT\n"
-		fi
-		PS="`expr $PS + 1`"
-	done
+  while [ "$PS" -le "$COUNT" ]; do
+    STATUS="$(_snmpgetval ".1.3.6.1.4.1.24681.1.4.1.1.1.1.3.2.1.4.$PS")"
+    if [ "$STATUS" -eq 0 ]; then
+      PSSTATUS="OK: GOOD"
+    else
+      PSSTATUS="CRITICAL: ERROR"
+      CRITICAL=1
+    fi
+    ALLOUTPUT="${ALLOUTPUT}Power Supply #$PS - $PSSTATUS"
+    if [ "$PS" -lt "$COUNT" ]; then
+      ALLOUTPUT="$ALLOUTPUT\n"
+    fi
+    PS="`expr $PS + 1`"
+  done
 
-	echo "$ALLOUTPUT"
+  echo "$ALLOUTPUT"
 
-	if [ $CRITICAL -eq 1 ]; then
-		exit 2
-	elif [ $WARNING -eq 1 ]; then
-		exit 1
-	else
-		exit 0
-	fi
+  if [ $CRITICAL -eq 1 ]; then
+    exit 2
+  elif [ $WARNING -eq 1 ]; then
+    exit 1
+  else
+    exit 0
+  fi
 
 # Fan Status----------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "fans" ]; then
-	ALLOUTPUT=""
-	PERFOUTPUT=""
-	WARNING=0
-	CRITICAL=0
-	FAN=1
-	FANCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.14.0)"
+elif [ "$strPart" == "fans" ]; then
+  ALLOUTPUT=""
+  PERFOUTPUT=""
+  WARNING=0
+  CRITICAL=0
+  FAN=1
+  FANCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.14.0)"
 
-	if [ "$strWarning" -lt "$strCritical" ]; then
-		echo "Warning threshold ($strWarning) is less than critical threshold ($strCritical) ! -- Are you sure ?"
-	fi
+  if [ "$strWarning" -lt "$strCritical" ]; then
+    echo "Warning threshold ($strWarning) is less than critical threshold ($strCritical) ! -- Are you sure ?"
+  fi
 
-	while [ "$FAN" -le "$FANCOUNT" ]; do
-		FANSPEED="$(_snmpgetval ".1.3.6.1.4.1.24681.1.2.15.1.3.$FAN" | sed -E 's/"([0-9]+) ?RPM"/\1/')"
+  while [ "$FAN" -le "$FANCOUNT" ]; do
+    FANSPEED="$(_snmpgetval ".1.3.6.1.4.1.24681.1.2.15.1.3.$FAN" | sed -E 's/"([0-9]+) ?RPM"/\1/')"
 
-		#Performance data
-		if [ $FAN -gt 1 ]; then
-			PERFOUTPUT="$PERFOUTPUT "
-		fi
-		PERFOUTPUT="${PERFOUTPUT}Fan-$FAN=$FANSPEED;$strWarning;$strCritical"
+    #Performance data
+    if [ $FAN -gt 1 ]; then
+      PERFOUTPUT="$PERFOUTPUT "
+    fi
+    PERFOUTPUT="${PERFOUTPUT}Fan-$FAN=$FANSPEED;$strWarning;$strCritical"
 
-		if [ "$FANSPEED" == "" ]; then
-			FANSTAT="CRITICAL: $FANSPEED RPM"
-			CRITICAL=1
-		elif [ "$FANSPEED" -le "$strCritical" ]; then
-			FANSTAT="CRITICAL: $FANSPEED RPM"
-			CRITICAL=1
-		elif [ "$FANSPEED" -le "$strWarning" ]; then
-			FANSTAT="WARNING: $FANSPEED RPM"
-			WARNING=1
-		else
-			FANSTAT="OK: $FANSPEED RPM"
-		fi
+    if [ "$FANSPEED" == "" ]; then
+      FANSTAT="CRITICAL: $FANSPEED RPM"
+      CRITICAL=1
+    elif [ "$FANSPEED" -le "$strCritical" ]; then
+      FANSTAT="CRITICAL: $FANSPEED RPM"
+      CRITICAL=1
+    elif [ "$FANSPEED" -le "$strWarning" ]; then
+      FANSTAT="WARNING: $FANSPEED RPM"
+      WARNING=1
+    else
+      FANSTAT="OK: $FANSPEED RPM"
+    fi
 
-		ALLOUTPUT="${ALLOUTPUT}Fan #${FAN}: $FANSTAT"
-		if [ "$FAN" -lt "$FANCOUNT" ]; then
-			ALLOUTPUT="${ALLOUTPUT}, "
-		fi
-		FAN="`expr $FAN + 1`"
-	done
+    ALLOUTPUT="${ALLOUTPUT}Fan #${FAN}: $FANSTAT"
+    if [ "$FAN" -lt "$FANCOUNT" ]; then
+      ALLOUTPUT="${ALLOUTPUT}, "
+    fi
+    FAN="`expr $FAN + 1`"
+  done
 
-	echo "$ALLOUTPUT|$PERFOUTPUT"
+  echo "$ALLOUTPUT|$PERFOUTPUT"
 
-	if [ $CRITICAL -eq 1 ]; then
-		exit 2
-	elif [ $WARNING -eq 1 ]; then
-		exit 1
-	else
-		exit 0
-	fi
+  if [ $CRITICAL -eq 1 ]; then
+    exit 2
+  elif [ $WARNING -eq 1 ]; then
+    exit 1
+  else
+    exit 0
+  fi
 
 # System Uptime----------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "systemuptime" ]; then
-	netuptime="$(_snmpget .1.3.6.1.2.1.1.3.0 | awk '{print $5, $6, $7, $8}')"
-	sysuptime="$(_snmpget .1.3.6.1.2.1.25.1.1.0 | awk '{print $5, $6, $7, $8}')"
+elif [ "$strPart" == "systemuptime" ]; then
+  EXIT=0
+  netuptime="$(echo "scale=0; $(_snmpget .1.3.6.1.2.1.1.3.0 | sed -r 's/.*\(([0-9]+)\).*/\1/g')/100" | bc -l)"
+  sysuptime="$(echo "scale=0; $(_snmpget .1.3.6.1.2.1.25.1.1.0 | sed -r 's/.*\(([0-9]+)\).*/\1/g')/100" | bc -l)"
 
-	echo "System Uptime $sysuptime - Network Uptime $netuptime"
-	exit 0
+  if [ -z $sysuptime -o -z $netuptime ]; then
+    OUTPUT="UNKOWN: Could not get uptime information!"
+    EXIT=3
+  fi
+  if [ "$sysuptime" -le "$strCritical" ]; then
+    OUTPUT="CRITICAL: System Uptime $(date -d @$(( $(date +%s) - $sysuptime )))"
+    EXIT=2
+  elif [ "$sysuptime" -le "$strWarning" ]; then
+    OUTPUT="WARNING: System Uptime $(date -d @$(( $(date +%s) - $sysuptime )))"
+    EXIT=1
+  elif [ "$netuptime" -le "$strCritical" ]; then
+    OUTPUT="$OUTPUT CRITICAL: Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+    EXIT=2
+  elif [ "$netuptime" -le "$strWarning" ]; then
+    OUTPUT="$OUTPUT WARNING: Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+    if [ ! $EXIT -eq 2 ];then
+      EXIT=1
+    fi
+  else
+    OUTPUT="OK: System Uptime $(date -d @$(( $(date +%s) - $sysuptime ))) - Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+  fi
+
+  #OUTPUT="System Uptime $(date -d @$(( $(date +%s) - $sysuptime ))) - Network Uptime $(date -d @$(( $(date +%s) - $netuptime )))"
+  PERFDATA="| system_uptime=${sysuptime}s;$strWarning;$strCritical;; network_uptime=${netuptime}s;$strWarning;$strCritical;;"
+
+  echo "$OUTPUT $PERFDATA" | awk '{$1=$1};1'
+  exit $EXIT
+
 
 # System Info------------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "sysinfo" ]; then
-	model="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.12.0 | sed 's/^"\(.*\).$/\1/')"
-	hdnum="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.10.0)"
-	VOLCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.16.0)"
-	name="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.13.0 | sed 's/^"\(.*\)$/\1/')"
-	firmware="$(_snmpgetval .1.3.6.1.2.1.47.1.1.1.1.9.1 | sed 's/^"\(.*\)$/\1/')"
+elif [ "$strPart" == "sysinfo" ]; then
+  model="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.12.0 | sed 's/^"\(.*\).$/\1/')"
+  hdnum="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.10.0)"
+  VOLCOUNT="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.16.0)"
+  name="$(_snmpgetval .1.3.6.1.4.1.24681.1.2.13.0 | sed 's/^"\(.*\)$/\1/')"
+  firmware="$(_snmpgetval .1.3.6.1.2.1.47.1.1.1.1.9.1 | sed 's/^"\(.*\)$/\1/')"
 
-	echo "NAS $name, Model $model, Firmware $firmware, Max HD number $hdnum, No. Volume $VOLCOUNT"
-	exit 0
+  echo "NAS $name, Model $model, Firmware $firmware, Max HD number $hdnum, No. Volume $VOLCOUNT"
+  exit 0
 
 #----------------------------------------------------------------------------------------------------------------------------------------------------
 else
-	echo -e "\nUnknown Part!" && exit 3
+  echo "Unknown Part!" && exit 3
 fi
 exit 0
