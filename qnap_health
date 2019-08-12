@@ -502,7 +502,7 @@ elif [ "$strPart" == "hdstatus" ]; then
 
   if [ -n "$output_crit" ]
   then
-    echo "CRITICAL: $(${output_crit} | awk '{$1=$1};1' )$PERFDATA"
+    echo "CRITICAL: $(echo ${output_crit} | awk '{$1=$1};1' )$PERFDATA"
     exit 2
   else
     echo "OK: Online Disk $hdok, Free Slot ${hdnop}$PERFDATA"
