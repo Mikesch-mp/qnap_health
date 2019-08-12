@@ -275,7 +275,7 @@ function _cmdparam() {
 }
 
 function _trim() {
-  return $(echo $1 | awk '{$1=$1};1')
+  echo $1 | awk '{$1=$1};1'
 }
 
 function _snmpget() {
@@ -522,8 +522,7 @@ elif [[ "$strPart" == hdtemp ]]; then
       OUTPUT="$OUTPUT $UnknownStr"
     fi
   fi
-  OUTPUT=$(echo "$OUTPUT" | awk '{$1=$1};1')
-  echo "$OUTPUT | $PERFOUTPUT"
+  echo "$(_trim "$OUTPUT")|$PERFOUTPUT"
   exit $EXIT
 
 # HD Status----------------------------------------------------------------------------------------------------------------------------------------
@@ -548,11 +547,11 @@ elif [ "$strPart" == "hdstatus" ]; then
     fi
   done
 
-  PERFDATA="| hdok=$hdok;;;; hdnok=$hdnok;;;; unused=$hdnop;;;;"
+  PERFDATA="|hdok=$hdok;;;; hdnok=$hdnok;;;; unused=$hdnop;;;;"
 
   if [ -n "$output_crit" ]
   then
-    echo "CRITICAL: $(echo ${output_crit} | awk '{$1=$1};1' )$PERFDATA"
+    echo "CRITICAL: $(_trim "${output_crit}")$PERFDATA"
     exit $EXIT_CRITICAL
   else
     echo "OK: Online Disk $hdok, Free Slot ${hdnop}$PERFDATA"
@@ -836,7 +835,7 @@ elif [ "$strPart" == "systemuptime" ]; then
 
   PERFDATA="| system_uptime=${sysuptime}s;$strWarning;$strCritical;; network_uptime=${netuptime}s;$strWarning;$strCritical;;"
 
-  echo "$OUTPUT $PERFDATA" | awk '{$1=$1};1'
+  echo "$(_trim "$OUTPUT $PERFDATA")"
   exit $EXIT
 
 # System Info------------------------------------------------------------------------------------------------------------------------------------------
