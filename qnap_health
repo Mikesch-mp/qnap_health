@@ -93,22 +93,22 @@ AWK_BIN=$(which awk)
 
 if [ -z "$SNMPGET_BIN" ]; then
   echo "Could not find 'snmpget'!"
-  usage()
+  usage
 fi
 
 if [ -z "$SNMPWALK_BIN" ]; then
   echo "Could not find 'snmpwalk'!"
-  usage()
+  usage
 fi
 
 if [ -z "$BC_BIN" ]; then
   echo "Could not find 'bc'!"
-  usage()
+  usage
 fi
 
 if [ -z "$AWK_BIN" ]; then
   echo "Could not find 'awk'!"
-  usage()
+  usage
 fi
 
 # Options
@@ -116,12 +116,12 @@ fi
 PARSED_OPTIONS=$(getopt -n "$0" -o V:H:C:p:hw:c:t:l:u:a:A:x:X:P: --long "hostname:,community:,part:,warning:,critical:,timeout:,level:,user:,authprotocol:,authpassphrase:,privprotocol:,privpassphrase:,port:,help" -- "$@")
 if [ $? -ne 0 ]; then
   usage
-  exit 3
+  exit $EXIT_UNKOWN
 fi
 
 if [ $# -eq 0 ]; then
   usage
-  exit 3
+  exit $EXIT_UNKOWN
 fi
 eval set -- "$PARSED_OPTIONS"
 
@@ -159,7 +159,7 @@ while true; do
             ;;
           *)
             echo "ERROR: wrong protocol version" >&2
-            usage()
+            usage
             ;;
         esac
       fi
@@ -185,7 +185,7 @@ while true; do
             ;;
           *)
             echo "ERROR: wrong security level" >&2
-            usage()
+            usage
             ;;
         esac
       fi
@@ -205,7 +205,7 @@ while true; do
             ;;
           *)
             echo "ERROR: wrong authentication protocol" >&2
-            usage()
+            usage
             ;;
         esac
       fi
@@ -216,7 +216,7 @@ while true; do
         strAuthpassphrase="$2"
       else
         echo "ERROR: authentification passphrase is missing" >&2
-        usage()
+        usage
       fi
       shift 2
       ;;
@@ -228,7 +228,7 @@ while true; do
             ;;
           *)
             echo "ERROR: wrong privacy protocol" >&2
-            usage()
+            usage
             ;;
         esac
       fi
