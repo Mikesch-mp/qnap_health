@@ -305,10 +305,9 @@ function _get_exp() {
     *)  echo "ERROR: unknown unit '$1'" ;;
   esac
 }
-
 # Check if QNAP is online
 TEST="$(_snmpstatus -t $timeout -r 0 2>&1)"
-if [ "$TEST" == "Timeout: No Response from $strHostname" ]; then
+if [ "$TEST" == "Timeout: No Response from $strHostname:$strPort" ]; then
   echo "UNKOWN: SNMP to $strHostname is not available or wrong community string";
   exit $EXIT_UNKNOWN;
 fi
