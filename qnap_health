@@ -462,7 +462,7 @@ elif [ "$strPart" == "temp" ]; then
   fi
 
 # Disk IOPS ----------------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "iops" ]; then
+elif [ "$strPart" == "iops" ]; then
  IOPS=$(_snmpgetval 1.3.6.1.4.1.24681.1.4.1.11.5.6.2.1.3.1 | sed -E 's/"|\s%//g')
 
  OUTPUT="IOPS="$IOPS"|IOPS="$IOPS";$strWarning;$strCritical;0;100"
@@ -479,7 +479,7 @@ elif [ "$strpart" == "iops" ]; then
  fi
 
 # Disk Latency ----------------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strpart" == "latency" ]; then
+elif [ "$strPart" == "latency" ]; then
   LATENCY=$(_snmpgetval 1.3.6.1.4.1.24681.1.4.1.11.5.6.2.1.4.1 | sed -E 's/"|\s%//g')
 
   OUTPUT="Latency="$LATENCY"|Latency="$LATENCY";$strWarning;$strCritical;0;100"
