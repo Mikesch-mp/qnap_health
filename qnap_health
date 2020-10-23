@@ -19,7 +19,7 @@
 #
 # contact the author directly for more information at: matthias@xcontrol.de
 ##########################################################################################
-plgVer=1.00
+plgVer=1.01
 
 usage() {
   echo
