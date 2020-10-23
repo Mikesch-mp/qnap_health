@@ -28,3 +28,4 @@ This script was tested with:
 - QNAP Model TS-1263U-RP, Firmware 4.3.3, Max HD number 12, No. Volume 1
 - QNAP Model TS-EC1680U, Firmware 4.3.6, Max HD number 16
 - QNAP Model TS-EC2480U, Firmware 4.3.6, Max HD number 24
+- QNAP Model TS-431P2, Firmware 4.4.1
