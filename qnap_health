@@ -52,7 +52,7 @@ usage() {
   echo "       -x|--privprotocol     - privacy protocol (DES|AES)"
   echo "       -X|--privpassphrase   - privacy protocol pass phrase"
   echo
-  echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, freeram, powerstatus, fans, diskused, hdstatus, hdtemp, lunstatus (for iSCSI luns), volstatus (Raid Volume Status)"
+  echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, freeram, iops, latency, powerstatus, fans, diskused, hdstatus, hdtemp, lunstatus (for iSCSI luns), volstatus (Raid Volume Status)"
   echo
   echo "volstatus & lunstatus checks all vols/luns and vols/lun space; powerstatus checks power supply"
   echo "<#> is 1-8 for hd, 1-5 for vol"
@@ -460,6 +460,39 @@ elif [ "$strPart" == "temp" ]; then
     exit $EXIT_OK
   fi
 
+# Disk IOPS ----------------------------------------------------------------------------------------------------------------------------------------------
+elif [ "$strpart" == "iops" ]; then
+ IOPS=$(_snmpgetval 1.3.6.1.4.1.24681.1.4.1.11.5.6.2.1.3.1 | sed -E 's/"|\s%//g')
+
+ OUTPUT="IOPS="$IOPS"|IOPS="$IOPS";$strWarning;$strCritical;0;100"
+
+ if (( $(echo "$IOPS > $strCritical" | bc -l) )); then
+   echo "CRITICAL: $OUTPUT"
+   exit $EXIT_CRITICAL
+ elif ((  $(echo "$IOPS > $strWarning" | bc -l) )); then
+   echo "WARNING: $OUTPUT"
+   exit $EXIT_WARNING
+ else
+   echo "OK: $OUTPUT"
+   exit $EXIT_OK
+ fi
+
+# Disk Latency ----------------------------------------------------------------------------------------------------------------------------------------------
+elif [ "$strpart" == "latency" ]; then
+  LATENCY=$(_snmpgetval 1.3.6.1.4.1.24681.1.4.1.11.5.6.2.1.4.1 | sed -E 's/"|\s%//g')
+
+  OUTPUT="Latency="$LATENCY"|Latency="$LATENCY";$strWarning;$strCritical;0;100"
+
+  if (( $(echo "$LATENCY > $strCritical" | bc -l) )); then
+    echo "CRITICAL: $OUTPUT"
+    exit $EXIT_CRITICAL
+  elif ((  $(echo "$LATENCY > $strWarning" | bc -l) )); then
+    echo "WARNING: $OUTPUT"
+    exit $EXIT_WARNING
+  else
+    echo "OK: $OUTPUT"
+    exit $EXIT_OK
+  fi
 
 # HD# Temperature---------------------------------------------------------------------------------------------------------------------------------------
 elif [[ "$strPart" == hdtemp ]]; then
