@@ -12,6 +12,8 @@ Copy the command_qnap_health.conf into the configuration path of Icinga2.
 
 Enable SNMP on QNAP NAS appliance, community name "public".
 
+Put the script to: "/usr/local/nagios/libexec/qnap_health" and don't forget to "chmod 0755 /usr/local/nagios/libexec/qnap_health".
+
 Add this at the end of your "/usr/local/nagios/etc/objects/commands.cfg":
 
 ```
