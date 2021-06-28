@@ -645,7 +645,7 @@ elif [ "$strPart" == "lunstatus" ]; then
     unset lunUsedPctStr
   done
 
-  if [ -z $ALLOUTPUT ]; then
+  if [ -z "$ALLOUTPUT" ]; then
     ALLOUTPUT="OK: All luns are fine."
   fi
   echo "$ALLOUTPUT| $PERFOUTPUT"
