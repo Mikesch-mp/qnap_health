@@ -2,11 +2,29 @@
 
 Check NAS QNAP from Icinga2 or similar monitoring software.
 
-# Usage
+# Usage: Icinga2
 
 Enable SNMP on QNAP NAS appliance and use this script with Icinga2.
 
 Copy the command_qnap_health.conf into the configuration path of Icinga2.
+
+# Usage: Nagios
+
+Enable SNMP on QNAP NAS appliance, community name "public".
+
+Put the script to: "/usr/local/nagios/libexec/qnap_health" and don't forget to "chmod 0755 /usr/local/nagios/libexec/qnap_health".
+
+Add this at the end of your "/usr/local/nagios/etc/objects/commands.cfg":
+
+```
+##########
+## QNAP	##
+##########
+define command{
+	command_name 	qnap_health
+	command_line 	$USER1$/qnap_health -H $HOSTADDRESS$ -C public -p $ARG1$ -w $ARG2$ -c $ARG3$
+}
+```
 
 # Contributing
 

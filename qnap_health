@@ -52,7 +52,7 @@ usage() {
   echo "       -x|--privprotocol     - privacy protocol (DES|AES)"
   echo "       -X|--privpassphrase   - privacy protocol pass phrase"
   echo
-  echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, freeram, iops, latency, powerstatus, fans, diskused, hdstatus, hdtemp, lunstatus (for iSCSI luns), volstatus (Raid Volume Status)"
+  echo "Parts are: status, sysinfo, systemuptime, temp, cpu, cputemp, usedram, iops, latency, powerstatus, fans, diskused, hdstatus, hdtemp, lunstatus (for iSCSI luns), volstatus (Raid Volume Status)"
   echo
   echo "volstatus & lunstatus checks all vols/luns and vols/lun space; powerstatus checks power supply"
   echo "<#> is 1-8 for hd, 1-5 for vol"
@@ -70,7 +70,7 @@ usage() {
   echo "  * awk"
   echo "  * snmpget"
   echo "  * snmpwalk"
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 }
 
 # Default values
@@ -116,12 +116,12 @@ fi
 PARSED_OPTIONS=$(getopt -n "$0" -o V:H:C:p:hw:c:t:l:u:a:A:x:X:P: --long "hostname:,community:,part:,warning:,critical:,timeout:,level:,user:,authprotocol:,authpassphrase:,privprotocol:,privpassphrase:,port:,help" -- "$@")
 if [ $? -ne 0 ]; then
   usage
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 fi
 
 if [ $# -eq 0 ]; then
   usage
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 fi
 eval set -- "$PARSED_OPTIONS"
 
@@ -399,7 +399,7 @@ elif [ "$strPart" == "cputemp" ]; then
   fi
 
 # Free RAM---------------------------------------------------------------------------------------------------------------------------------------
-elif [ "$strPart" == "freeram" ]; then
+elif [ "$strPart" == "usedram" ]; then
   totalMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.2.0)"
   freeMemStr="$(_snmpgetval 1.3.6.1.4.1.24681.1.2.3.0)"
 
@@ -431,7 +431,7 @@ elif [ "$strPart" == "freeram" ]; then
     usedMemF="$usedMemH$freeMemUnit"
   fi
 
-  OUTPUT="Total:$totalMemF - Used:$usedMemF - Free:$freeMemF = $percMem%|Memory usage=$percMem%;$strWarning;$strCritical;0;100"
+  OUTPUT="Total:$totalMemF - Used:$usedMemF - Free:$freeMemF|Memory usage=$percMem%;$strWarning;$strCritical;0;100"
 
   if [ $percMem -ge $strCritical ]; then
     echo "CRITICAL: $OUTPUT"
@@ -506,13 +506,13 @@ elif [[ "$strPart" == hdtemp ]]; then
   for (( c=1; c<=$hdnum; c++ ))
   do
     TEMPHD="$(_snmpgetval "1.3.6.1.4.1.24681.1.2.11.1.3.$c" | sed -E 's/"([0-9.]+) ?C.*/\1/')"
-
-    if [ "$(echo "$TEMPHD" | sed -E 's/[0-9.]+//g')" != "" ]; then
-      if [ -n "$UnknownStr"]; then
+    if [[ ! $TEMPHD =~ ^-?[0-9]+$ ]]; then
+      if [ -n "$UnknownStr" ]; then
         UnknownStr="${UnknownStr},HDD${c}"
       else
         UnknownStr="UNKNOWN: HD${c}"
       fi
+      continue
     fi
     if [ $TEMPHD -ge $strCritical ]; then
       if [ -n "$CriticalStr" ]; then
@@ -548,7 +548,7 @@ elif [[ "$strPart" == hdtemp ]]; then
       OUTPUT="$OUTPUT $WarningStr"
     fi
     if [ -n "$UnknownStr" ];then
-      if [ ! $EXIT -eq 1 -o ! $EXIT -eq 2 ];then
+      if [ ! $EXIT -eq 1 -a ! $EXIT -eq 2 ];then
         EXIT=$EXIT_UNKNOWN
       fi
       OUTPUT="$OUTPUT $UnknownStr"
@@ -850,7 +850,7 @@ elif [ "$strPart" == "systemuptime" ]; then
 
   if [ -z $sysuptime -o -z $netuptime ]; then
     OUTPUT="UNKOWN: Could not get uptime information!"
-    EXIT=$EXIT_UNKOWN
+    EXIT=$EXIT_UNKNOWN
   fi
   if [ "$sysuptime" -le "$strCritical" ]; then
     OUTPUT="CRITICAL: System up since $(date -d @$(( $(date +%s) - $sysuptime )))"
