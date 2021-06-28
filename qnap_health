@@ -70,7 +70,7 @@ usage() {
   echo "  * awk"
   echo "  * snmpget"
   echo "  * snmpwalk"
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 }
 
 # Default values
@@ -116,12 +116,12 @@ fi
 PARSED_OPTIONS=$(getopt -n "$0" -o V:H:C:p:hw:c:t:l:u:a:A:x:X:P: --long "hostname:,community:,part:,warning:,critical:,timeout:,level:,user:,authprotocol:,authpassphrase:,privprotocol:,privpassphrase:,port:,help" -- "$@")
 if [ $? -ne 0 ]; then
   usage
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 fi
 
 if [ $# -eq 0 ]; then
   usage
-  exit $EXIT_UNKOWN
+  exit $EXIT_UNKNOWN
 fi
 eval set -- "$PARSED_OPTIONS"
 
@@ -845,7 +845,7 @@ elif [ "$strPart" == "systemuptime" ]; then
 
   if [ -z $sysuptime -o -z $netuptime ]; then
     OUTPUT="UNKOWN: Could not get uptime information!"
-    EXIT=$EXIT_UNKOWN
+    EXIT=$EXIT_UNKNOWN
   fi
   if [ "$sysuptime" -le "$strCritical" ]; then
     OUTPUT="CRITICAL: System up since $(date -d @$(( $(date +%s) - $sysuptime )))"
