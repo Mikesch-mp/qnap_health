@@ -596,6 +596,7 @@ elif [ "$strPart" == "lunstatus" ]; then
   PERFOUTPUT=""
   WARNING=0
   CRITICAL=0
+  lunDISABLEDCOUNT=0
   lun=1
   lunCOUNT="$(_snmpwalk .1.3.6.1.4.1.24681.1.4.1.1.2.1.10.2.1.2 | wc -l)"
 
@@ -609,6 +610,7 @@ elif [ "$strPart" == "lunstatus" ]; then
       lunSTAT="OK($lun_Status)"
     else
       lunSTAT="CRITICAL($lun_Status)"
+      lunDISABLEDCOUNT=$((lunDISABLEDCOUNT+1))
       CRITICAL=1
     fi
 
@@ -645,8 +647,11 @@ elif [ "$strPart" == "lunstatus" ]; then
     unset lunUsedPctStr
   done
 
-  if [ -z "$ALLOUTPUT" ]; then
-    ALLOUTPUT="OK: All luns are fine."
+  if [ -z $ALLOUTPUT ]; then
+    ALLOUTPUT="OK: All $lunCOUNT luns are fine."
+    if [ $lunDISABLEDCOUNT -ne 0 ]; then
+      ALLOUTPUT="CRITICAL: $lunDISABLEDCOUNT of $lunCOUNT luns are disabled."
+    fi
   fi
   echo "$ALLOUTPUT| $PERFOUTPUT"
 
